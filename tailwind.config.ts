@@ -57,6 +57,26 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        message: {
+          user: "hsl(var(--message-user))",
+          "user-foreground": "hsl(var(--message-user-foreground))",
+          other: "hsl(var(--message-other))",
+          "other-foreground": "hsl(var(--message-other-foreground))",
+          hover: "hsl(var(--message-hover))",
+        },
+        copilot: {
+          DEFAULT: "hsl(var(--copilot))",
+          foreground: "hsl(var(--copilot-foreground))",
+        },
+      },
+      backgroundImage: {
+        "gradient-primary": "var(--gradient-primary)",
+        "gradient-subtle": "var(--gradient-subtle)",
+      },
+      boxShadow: {
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
       },
       borderRadius: {
         lg: "var(--radius)",
