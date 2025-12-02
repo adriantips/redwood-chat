@@ -7,6 +7,7 @@ import { Send, Sparkles, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
 import MessageBubble from "./MessageBubble";
+import TypingIndicator from "./TypingIndicator";
 
 interface Message {
   id: string;
@@ -25,24 +26,45 @@ interface ChatAreaProps {
   conversationId: string | null;
 }
 
+interface TypingUser {
+  user_id: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
+}
+
 const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [copilotLoading, setCopilotLoading] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const { toast } = useToast();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (conversationId) {
       loadMessages();
-      subscribeToMessages();
+      const unsubMessages = subscribeToMessages();
+      const unsubPresence = subscribeToPresence();
+      
+      return () => {
+        // Clear typing timeout
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        // Broadcast typing stopped before leaving
+        broadcastTyping(false);
+        // Cleanup subscriptions
+        unsubMessages();
+        unsubPresence();
+      };
     }
   }, [conversationId]);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, typingUsers]);
 
   const scrollToBottom = () => {
     if (scrollRef.current) {
@@ -128,6 +150,91 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
     };
   };
 
+  const subscribeToPresence = () => {
+    // Get current user profile
+    const loadUserProfile = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("display_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle();
+      return data;
+    };
+
+    const channel = supabase.channel(`presence-${conversationId}`, {
+      config: { presence: { key: user.id } },
+    });
+
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        const typing: TypingUser[] = [];
+
+        Object.keys(state).forEach((presenceKey) => {
+          const presences = state[presenceKey];
+          presences.forEach((presence: any) => {
+            if (presence.user_id !== user.id && presence.typing) {
+              typing.push({
+                user_id: presence.user_id,
+                display_name: presence.display_name,
+                avatar_url: presence.avatar_url,
+              });
+            }
+          });
+        });
+
+        setTypingUsers(typing);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          const profile = await loadUserProfile();
+          await channel.track({
+            user_id: user.id,
+            display_name: profile?.display_name,
+            avatar_url: profile?.avatar_url,
+            typing: false,
+          });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  const broadcastTyping = async (isTyping: boolean) => {
+    if (!conversationId) return;
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const channel = supabase.channel(`presence-${conversationId}`);
+    await channel.track({
+      user_id: user.id,
+      display_name: profile?.display_name,
+      avatar_url: profile?.avatar_url,
+      typing: isTyping,
+    });
+  };
+
+  const handleTyping = () => {
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Broadcast typing
+    broadcastTyping(true);
+
+    // Set timeout to stop typing indicator after 2 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      broadcastTyping(false);
+    }, 2000);
+  };
+
   const sendMessage = async (content: string, isCopilot = false) => {
     if (!conversationId || !content.trim()) return;
 
@@ -158,6 +265,7 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    broadcastTyping(false); // Stop typing indicator when sending
     sendMessage(newMessage);
   };
 
@@ -223,6 +331,7 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
               isOwn={message.user_id === user.id}
             />
           ))}
+          {typingUsers.length > 0 && <TypingIndicator users={typingUsers} />}
           <div ref={scrollRef} />
         </div>
       </ScrollArea>
@@ -233,7 +342,10 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
             <div className="flex-1 relative">
               <Textarea
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={(e) => {
+                  setNewMessage(e.target.value);
+                  handleTyping();
+                }}
                 placeholder="Type your message..."
                 className="min-h-[60px] resize-none pr-12 border-2 focus:ring-2 focus:ring-primary/20"
                 onKeyDown={(e) => {
