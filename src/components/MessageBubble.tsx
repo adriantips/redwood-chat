@@ -1,4 +1,5 @@
-import { Sparkles, User } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface Message {
   id: string;
@@ -6,6 +7,10 @@ interface Message {
   user_id: string;
   is_copilot: boolean;
   created_at: string;
+  profiles?: {
+    display_name: string | null;
+    avatar_url: string | null;
+  };
 }
 
 interface MessageBubbleProps {
@@ -38,18 +43,21 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
     );
   }
 
+  const displayName = message.profiles?.display_name || "User";
+  const avatarUrl = message.profiles?.avatar_url || "";
+  const initial = displayName[0]?.toUpperCase() || "U";
+
   return (
     <div className={`flex gap-3 items-start ${isOwn ? "flex-row-reverse" : ""}`}>
-      <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-          isOwn ? "bg-message-user" : "bg-muted"
-        }`}
-      >
-        <User className={`w-4 h-4 ${isOwn ? "text-message-user-foreground" : "text-muted-foreground"}`} />
-      </div>
+      <Avatar className="w-8 h-8 flex-shrink-0">
+        <AvatarImage src={avatarUrl} />
+        <AvatarFallback className={isOwn ? "bg-message-user text-message-user-foreground" : "bg-muted text-muted-foreground"}>
+          {initial}
+        </AvatarFallback>
+      </Avatar>
       <div className={`flex-1 space-y-1 ${isOwn ? "items-end" : "items-start"} flex flex-col`}>
         <div className={`flex items-center gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
-          <span className="text-xs font-medium text-foreground">{isOwn ? "You" : "Other"}</span>
+          <span className="text-xs font-medium text-foreground">{isOwn ? "You" : displayName}</span>
           <span className="text-xs text-muted-foreground">{formatTime(message.created_at)}</span>
         </div>
         <div
