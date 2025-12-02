@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, MessageSquare, LogOut, Sparkles } from "lucide-react";
+import { Plus, MessageSquare, LogOut, User as UserIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
 
@@ -22,6 +23,7 @@ interface ChatSidebarProps {
 const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewConversation }: ChatSidebarProps) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadConversations();
@@ -100,8 +102,8 @@ const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewC
         </div>
       </ScrollArea>
 
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-2 mb-2 px-2">
+      <div className="p-4 border-t border-sidebar-border space-y-2">
+        <div className="flex items-center gap-2 px-2">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
             <span className="text-sm font-medium text-primary">
               {user.email?.[0].toUpperCase()}
@@ -113,6 +115,15 @@ const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewC
             </p>
           </div>
         </div>
+        <Button
+          onClick={() => navigate("/profile")}
+          variant="ghost"
+          className="w-full justify-start text-sm"
+          size="sm"
+        >
+          <UserIcon className="w-4 h-4 mr-2" />
+          Edit Profile
+        </Button>
         <Button
           onClick={handleSignOut}
           variant="ghost"
