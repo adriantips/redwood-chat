@@ -14,6 +14,10 @@ interface Message {
   user_id: string;
   is_copilot: boolean;
   created_at: string;
+  profiles?: {
+    display_name: string | null;
+    avatar_url: string | null;
+  };
 }
 
 interface ChatAreaProps {
@@ -49,7 +53,7 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
   const loadMessages = async () => {
     if (!conversationId) return;
 
-    const { data, error } = await supabase
+    const { data: messagesData, error } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
@@ -64,7 +68,30 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
       return;
     }
 
-    setMessages(data || []);
+    if (!messagesData) {
+      setMessages([]);
+      return;
+    }
+
+    // Get unique user IDs
+    const userIds = [...new Set(messagesData.map((m) => m.user_id))];
+
+    // Fetch profiles for all users
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", userIds);
+
+    // Create a map of user_id to profile
+    const profilesMap = new Map(profilesData?.map((p) => [p.id, p]) || []);
+
+    // Merge profiles with messages
+    const messagesWithProfiles = messagesData.map((msg) => ({
+      ...msg,
+      profiles: profilesMap.get(msg.user_id),
+    }));
+
+    setMessages(messagesWithProfiles);
   };
 
   const subscribeToMessages = () => {
@@ -78,8 +105,20 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
+        async (payload) => {
+          const newMessage = payload.new as Message;
+          
+          // Fetch profile data for the new message
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("display_name, avatar_url")
+            .eq("id", newMessage.user_id)
+            .maybeSingle();
+          
+          setMessages((prev) => [
+            ...prev,
+            { ...newMessage, profiles: profile || undefined }
+          ]);
         }
       )
       .subscribe();
