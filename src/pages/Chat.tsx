@@ -62,12 +62,13 @@ const Chat = () => {
     if (!user) return;
 
     try {
-      // Create new conversation
-      const { data: conversation, error: convError } = await supabase
+      // Generate UUID client-side to avoid SELECT policy issues
+      const conversationId = crypto.randomUUID();
+
+      // Create new conversation with the generated ID
+      const { error: convError } = await supabase
         .from("conversations")
-        .insert({ title: "New Conversation" })
-        .select()
-        .single();
+        .insert({ id: conversationId, title: "New Conversation" });
 
       if (convError) throw convError;
 
@@ -75,13 +76,13 @@ const Chat = () => {
       const { error: participantError } = await supabase
         .from("conversation_participants")
         .insert({
-          conversation_id: conversation.id,
+          conversation_id: conversationId,
           user_id: user.id,
         });
 
       if (participantError) throw participantError;
 
-      setCurrentConversationId(conversation.id);
+      setCurrentConversationId(conversationId);
       toast({ title: "New conversation created" });
     } catch (error: any) {
       toast({
