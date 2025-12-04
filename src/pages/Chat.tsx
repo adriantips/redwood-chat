@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import ChatSidebar from "@/components/ChatSidebar";
 import ChatArea from "@/components/ChatArea";
+import UserSelectDialog from "@/components/UserSelectDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -11,6 +12,7 @@ const Chat = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [showUserSelect, setShowUserSelect] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -58,32 +60,36 @@ const Chat = () => {
     }
   };
 
-  const handleNewConversation = async () => {
+  const handleNewConversation = () => {
+    setShowUserSelect(true);
+  };
+
+  const handleCreateConversation = async (selectedUserIds: string[]) => {
     if (!user) return;
 
     try {
-      // Generate UUID client-side to avoid SELECT policy issues
       const conversationId = crypto.randomUUID();
 
-      // Create new conversation with the generated ID
       const { error: convError } = await supabase
         .from("conversations")
         .insert({ id: conversationId, title: "New Conversation" });
 
       if (convError) throw convError;
 
-      // Add user as participant
+      // Add current user and selected users as participants
+      const participants = [user.id, ...selectedUserIds].map((userId) => ({
+        conversation_id: conversationId,
+        user_id: userId,
+      }));
+
       const { error: participantError } = await supabase
         .from("conversation_participants")
-        .insert({
-          conversation_id: conversationId,
-          user_id: user.id,
-        });
+        .insert(participants);
 
       if (participantError) throw participantError;
 
       setCurrentConversationId(conversationId);
-      toast({ title: "New conversation created" });
+      toast({ title: "Conversation created" });
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -112,6 +118,12 @@ const Chat = () => {
         onNewConversation={handleNewConversation}
       />
       <ChatArea user={user} conversationId={currentConversationId} />
+      <UserSelectDialog
+        open={showUserSelect}
+        onOpenChange={setShowUserSelect}
+        currentUser={user}
+        onSelect={handleCreateConversation}
+      />
     </div>
   );
 };
