@@ -71,6 +71,8 @@ export type Database = {
           created_at: string | null
           id: string
           is_copilot: boolean | null
+          media_url: string | null
+          message_type: string
           user_id: string
         }
         Insert: {
@@ -79,6 +81,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_copilot?: boolean | null
+          media_url?: string | null
+          message_type?: string
           user_id: string
         }
         Update: {
@@ -87,6 +91,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_copilot?: boolean | null
+          media_url?: string | null
+          message_type?: string
           user_id?: string
         }
         Relationships: [

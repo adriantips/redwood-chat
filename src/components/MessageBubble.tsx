@@ -1,5 +1,6 @@
 import { Sparkles } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import MediaMessage from "./MediaMessage";
 
 interface Message {
   id: string;
@@ -7,6 +8,8 @@ interface Message {
   user_id: string;
   is_copilot: boolean;
   created_at: string;
+  message_type?: string;
+  media_url?: string | null;
   profiles?: {
     display_name: string | null;
     avatar_url: string | null;
@@ -67,7 +70,13 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
               : "bg-message-other text-message-other-foreground rounded-tl-md border border-border"
           }`}
         >
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          {message.message_type === "image" && message.media_url ? (
+            <MediaMessage type="image" mediaUrl={message.media_url} />
+          ) : message.message_type === "voice" && message.media_url ? (
+            <MediaMessage type="voice" mediaUrl={message.media_url} />
+          ) : (
+            <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+          )}
         </div>
       </div>
     </div>

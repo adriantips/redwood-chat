@@ -8,6 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
+import VoiceRecorder from "./VoiceRecorder";
+import ImageUpload from "./ImageUpload";
 
 interface Message {
   id: string;
@@ -15,6 +17,8 @@ interface Message {
   user_id: string;
   is_copilot: boolean;
   created_at: string;
+  message_type?: string;
+  media_url?: string | null;
   profiles?: {
     display_name: string | null;
     avatar_url: string | null;
@@ -235,16 +239,18 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
     }, 2000);
   };
 
-  const sendMessage = async (content: string, isCopilot = false) => {
-    if (!conversationId || !content.trim()) return;
+  const sendMessage = async (content: string, isCopilot = false, messageType = "text", mediaUrl?: string) => {
+    if (!conversationId || (!content.trim() && messageType === "text")) return;
 
     setLoading(true);
     try {
       const { error } = await supabase.from("messages").insert({
         conversation_id: conversationId,
         user_id: user.id,
-        content: content.trim(),
+        content: content.trim() || (messageType === "image" ? "📷 Image" : "🎤 Voice message"),
         is_copilot: isCopilot,
+        message_type: messageType,
+        media_url: mediaUrl,
       });
 
       if (error) throw error;
@@ -256,6 +262,66 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
       toast({
         variant: "destructive",
         title: "Error sending message",
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const uploadMedia = async (file: Blob, type: "image" | "voice"): Promise<string | null> => {
+    const ext = type === "image" ? "jpg" : "webm";
+    const fileName = `${user.id}/${Date.now()}.${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from("chat-media")
+      .upload(fileName, file);
+
+    if (error) {
+      console.error("Upload error:", error);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("chat-media")
+      .getPublicUrl(data.path);
+
+    return urlData.publicUrl;
+  };
+
+  const handleImageSelect = async (file: File) => {
+    if (!conversationId) return;
+
+    setLoading(true);
+    try {
+      const mediaUrl = await uploadMedia(file, "image");
+      if (mediaUrl) {
+        await sendMessage("", false, "image", mediaUrl);
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error uploading image",
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVoiceRecording = async (audioBlob: Blob) => {
+    if (!conversationId) return;
+
+    setLoading(true);
+    try {
+      const mediaUrl = await uploadMedia(audioBlob, "voice");
+      if (mediaUrl) {
+        await sendMessage("", false, "voice", mediaUrl);
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error uploading voice message",
         description: error.message,
       });
     } finally {
@@ -338,7 +404,11 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
 
       <div className="border-t border-border p-4 bg-card">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-end">
+            <div className="flex items-center gap-1">
+              <ImageUpload onImageSelect={handleImageSelect} disabled={loading} />
+              <VoiceRecorder onRecordingComplete={handleVoiceRecording} disabled={loading} />
+            </div>
             <div className="flex-1 relative">
               <Textarea
                 value={newMessage}
