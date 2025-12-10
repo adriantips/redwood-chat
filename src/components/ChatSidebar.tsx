@@ -27,7 +27,38 @@ const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewC
 
   useEffect(() => {
     loadConversations();
-  }, []);
+    
+    // Subscribe to realtime updates for conversations
+    const channel = supabase
+      .channel('sidebar-conversations')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversation_participants',
+        },
+        () => {
+          loadConversations();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'conversations',
+        },
+        () => {
+          loadConversations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user.id]);
 
   const loadConversations = async () => {
     const { data, error } = await supabase
