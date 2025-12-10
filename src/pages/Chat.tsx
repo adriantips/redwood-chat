@@ -76,17 +76,25 @@ const Chat = () => {
 
       if (convError) throw convError;
 
-      // Add current user and selected users as participants
-      const participants = [user.id, ...selectedUserIds].map((userId) => ({
-        conversation_id: conversationId,
-        user_id: userId,
-      }));
-
-      const { error: participantError } = await supabase
+      // Add current user as participant first (allowed by RLS)
+      const { error: selfError } = await supabase
         .from("conversation_participants")
-        .insert(participants);
+        .insert({ conversation_id: conversationId, user_id: user.id });
 
-      if (participantError) throw participantError;
+      if (selfError) throw selfError;
+
+      // Add other participants using the secure function
+      if (selectedUserIds.length > 0) {
+        const { error: othersError } = await supabase.rpc(
+          "add_conversation_participants",
+          {
+            p_conversation_id: conversationId,
+            p_user_ids: selectedUserIds,
+          }
+        );
+
+        if (othersError) throw othersError;
+      }
 
       setCurrentConversationId(conversationId);
       toast({ title: "Conversation created" });
