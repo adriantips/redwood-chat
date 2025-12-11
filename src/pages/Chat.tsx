@@ -5,7 +5,10 @@ import { User } from "@supabase/supabase-js";
 import ChatSidebar from "@/components/ChatSidebar";
 import ChatArea from "@/components/ChatArea";
 import UserSelectDialog from "@/components/UserSelectDialog";
+import IncomingCallDialog from "@/components/IncomingCallDialog";
+import ActiveCall from "@/components/ActiveCall";
 import { useToast } from "@/hooks/use-toast";
+import { useCalling } from "@/hooks/useCalling";
 import { Loader2 } from "lucide-react";
 
 const Chat = () => {
@@ -15,6 +18,17 @@ const Chat = () => {
   const [showUserSelect, setShowUserSelect] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  const {
+    activeCall,
+    incomingCall,
+    isCalling,
+    initiateCall,
+    answerCall,
+    declineCall,
+    endCall,
+    audioRef,
+  } = useCalling(user);
 
   useEffect(() => {
     checkAuth();
@@ -52,7 +66,6 @@ const Chat = () => {
       .single();
 
     if (error && error.code === "PGRST116") {
-      // Profile doesn't exist, create it
       await supabase.from("profiles").insert({
         id: user.id,
         email: user.email!,
@@ -76,14 +89,12 @@ const Chat = () => {
 
       if (convError) throw convError;
 
-      // Add current user as participant first (allowed by RLS)
       const { error: selfError } = await supabase
         .from("conversation_participants")
         .insert({ conversation_id: conversationId, user_id: user.id });
 
       if (selfError) throw selfError;
 
-      // Add other participants using the secure function
       if (selectedUserIds.length > 0) {
         const { error: othersError } = await supabase.rpc(
           "add_conversation_participants",
@@ -125,13 +136,45 @@ const Chat = () => {
         onConversationSelect={setCurrentConversationId}
         onNewConversation={handleNewConversation}
       />
-      <ChatArea user={user} conversationId={currentConversationId} />
+      <ChatArea
+        user={user}
+        conversationId={currentConversationId}
+        onCall={initiateCall}
+        isCalling={isCalling}
+      />
       <UserSelectDialog
         open={showUserSelect}
         onOpenChange={setShowUserSelect}
         currentUser={user}
         onSelect={handleCreateConversation}
       />
+      
+      {/* Incoming call dialog */}
+      <IncomingCallDialog
+        open={!!incomingCall}
+        callerName={incomingCall?.caller_profile?.display_name || null}
+        callerAvatar={incomingCall?.caller_profile?.avatar_url || null}
+        onAnswer={answerCall}
+        onDecline={declineCall}
+      />
+      
+      {/* Active call overlay */}
+      {activeCall?.status === "accepted" && (
+        <ActiveCall
+          participantName={
+            activeCall.caller_id === user.id
+              ? null // Will be filled from participant data
+              : incomingCall?.caller_profile?.display_name || null
+          }
+          participantAvatar={
+            activeCall.caller_id === user.id
+              ? null
+              : incomingCall?.caller_profile?.avatar_url || null
+          }
+          onEndCall={endCall}
+          audioRef={audioRef}
+        />
+      )}
     </div>
   );
 };
