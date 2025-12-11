@@ -1,4 +1,4 @@
-import { Phone, Loader2 } from "lucide-react";
+import { Video, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -28,12 +28,12 @@ const CallButton = ({ onClick, disabled, isCalling }: CallButtonProps) => {
             {isCalling ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <Phone className="w-5 h-5" />
+              <Video className="w-5 h-5" />
             )}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>Start voice call</p>
+          <p>Start video call</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

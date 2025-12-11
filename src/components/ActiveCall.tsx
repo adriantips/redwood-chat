@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { PhoneOff, Mic, MicOff } from "lucide-react";
+import { useState, useEffect } from "react";
+import { PhoneOff, Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -7,17 +7,24 @@ interface ActiveCallProps {
   participantName: string | null;
   participantAvatar: string | null;
   onEndCall: () => void;
-  audioRef: React.RefObject<HTMLAudioElement>;
+  onToggleVideo: () => boolean;
+  onToggleAudio: () => boolean;
+  localVideoRef: React.RefObject<HTMLVideoElement>;
+  remoteVideoRef: React.RefObject<HTMLVideoElement>;
 }
 
 const ActiveCall = ({
   participantName,
   participantAvatar,
   onEndCall,
-  audioRef,
+  onToggleVideo,
+  onToggleAudio,
+  localVideoRef,
+  remoteVideoRef,
 }: ActiveCallProps) => {
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -33,53 +40,97 @@ const ActiveCall = ({
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const toggleMute = () => {
-    setIsMuted(!isMuted);
-    // Mute the local audio track
-    const audioElement = audioRef.current;
-    if (audioElement?.srcObject) {
-      const stream = audioElement.srcObject as MediaStream;
-      stream.getAudioTracks().forEach((track) => {
-        track.enabled = isMuted;
-      });
-    }
+  const handleToggleMute = () => {
+    const newState = onToggleAudio();
+    setIsMuted(!newState);
+  };
+
+  const handleToggleVideo = () => {
+    const newState = onToggleVideo();
+    setIsVideoOff(!newState);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex items-center justify-center">
-      <audio ref={audioRef} autoPlay className="hidden" />
-      
-      <div className="flex flex-col items-center space-y-8">
-        <div className="relative">
-          <div className="absolute inset-0 rounded-full bg-green-500/20 animate-pulse" />
-          <Avatar className="w-32 h-32 border-4 border-green-500">
-            <AvatarImage src={participantAvatar || undefined} />
-            <AvatarFallback className="text-3xl bg-gradient-primary text-primary-foreground">
-              {participantName?.[0]?.toUpperCase() || "?"}
-            </AvatarFallback>
-          </Avatar>
+    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+      {/* Remote video (full screen) */}
+      <div className="flex-1 relative bg-black">
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover"
+        />
+        
+        {/* Fallback avatar when no video */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="text-center space-y-4">
+            <Avatar className="w-32 h-32 border-4 border-white/20 mx-auto">
+              <AvatarImage src={participantAvatar || undefined} />
+              <AvatarFallback className="text-4xl bg-gradient-primary text-primary-foreground">
+                {participantName?.[0]?.toUpperCase() || "?"}
+              </AvatarFallback>
+            </Avatar>
+            <h2 className="text-2xl font-semibold text-white">
+              {participantName || "Unknown"}
+            </h2>
+          </div>
         </div>
 
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl font-semibold text-foreground">
-            {participantName || "Unknown"}
-          </h2>
-          <p className="text-lg text-green-500 font-mono">{formatDuration(duration)}</p>
+        {/* Local video (picture-in-picture) */}
+        <div className="absolute top-4 right-4 w-32 h-48 md:w-48 md:h-64 rounded-xl overflow-hidden border-2 border-white/20 shadow-xl">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${isVideoOff ? 'hidden' : ''}`}
+          />
+          {isVideoOff && (
+            <div className="w-full h-full bg-muted flex items-center justify-center">
+              <VideoOff className="w-8 h-8 text-muted-foreground" />
+            </div>
+          )}
         </div>
 
-        <div className="flex gap-6">
+        {/* Duration */}
+        <div className="absolute top-4 left-4 bg-black/50 px-3 py-1 rounded-full">
+          <p className="text-white font-mono">{formatDuration(duration)}</p>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="bg-card border-t border-border p-6">
+        <div className="flex justify-center gap-6">
           <Button
             variant="outline"
             size="lg"
-            className={`rounded-full w-16 h-16 ${isMuted ? "bg-red-500/20 border-red-500" : ""}`}
-            onClick={toggleMute}
+            className={`rounded-full w-14 h-14 ${isMuted ? "bg-red-500/20 border-red-500" : ""}`}
+            onClick={handleToggleMute}
           >
-            {isMuted ? <MicOff className="w-6 h-6 text-red-500" /> : <Mic className="w-6 h-6" />}
+            {isMuted ? (
+              <MicOff className="w-6 h-6 text-red-500" />
+            ) : (
+              <Mic className="w-6 h-6" />
+            )}
           </Button>
+          
+          <Button
+            variant="outline"
+            size="lg"
+            className={`rounded-full w-14 h-14 ${isVideoOff ? "bg-red-500/20 border-red-500" : ""}`}
+            onClick={handleToggleVideo}
+          >
+            {isVideoOff ? (
+              <VideoOff className="w-6 h-6 text-red-500" />
+            ) : (
+              <Video className="w-6 h-6" />
+            )}
+          </Button>
+          
           <Button
             variant="destructive"
             size="lg"
-            className="rounded-full w-16 h-16"
+            className="rounded-full w-14 h-14"
             onClick={onEndCall}
           >
             <PhoneOff className="w-6 h-6" />

@@ -29,7 +29,8 @@ export const useCalling = (user: User | null) => {
   const localStream = useRef<MediaStream | null>(null);
   const remoteStream = useRef<MediaStream | null>(null);
   const peerConnection = useRef<RTCPeerConnection | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // Subscribe to incoming calls
   useEffect(() => {
@@ -127,7 +128,20 @@ export const useCalling = (user: User | null) => {
 
   const startWebRTC = async (callId: string, isInitiator: boolean) => {
     try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request both audio and video
+      localStream.current = await navigator.mediaDevices.getUserMedia({ 
+        audio: true,
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user"
+        }
+      });
+      
+      // Display local video
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream.current;
+      }
       
       peerConnection.current = new RTCPeerConnection({
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -139,9 +153,8 @@ export const useCalling = (user: User | null) => {
 
       peerConnection.current.ontrack = (event) => {
         remoteStream.current = event.streams[0];
-        if (audioRef.current) {
-          audioRef.current.srcObject = event.streams[0];
-          audioRef.current.play();
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0];
         }
       };
 
@@ -172,8 +185,8 @@ export const useCalling = (user: User | null) => {
       console.error("WebRTC error:", error);
       toast({
         variant: "destructive",
-        title: "Microphone access denied",
-        description: "Please allow microphone access to make calls.",
+        title: "Camera/Microphone access denied",
+        description: "Please allow camera and microphone access to make video calls.",
       });
     }
   };
@@ -263,6 +276,28 @@ export const useCalling = (user: User | null) => {
     }
   }, [activeCall]);
 
+  const toggleVideo = useCallback(() => {
+    if (localStream.current) {
+      const videoTrack = localStream.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        return videoTrack.enabled;
+      }
+    }
+    return false;
+  }, []);
+
+  const toggleAudio = useCallback(() => {
+    if (localStream.current) {
+      const audioTrack = localStream.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        return audioTrack.enabled;
+      }
+    }
+    return false;
+  }, []);
+
   const endCallCleanup = () => {
     localStream.current?.getTracks().forEach((track) => track.stop());
     peerConnection.current?.close();
@@ -282,6 +317,9 @@ export const useCalling = (user: User | null) => {
     answerCall,
     declineCall,
     endCall,
-    audioRef,
+    toggleVideo,
+    toggleAudio,
+    localVideoRef,
+    remoteVideoRef,
   };
 };
