@@ -27,7 +27,10 @@ const Chat = () => {
     answerCall,
     declineCall,
     endCall,
-    audioRef,
+    toggleVideo,
+    toggleAudio,
+    localVideoRef,
+    remoteVideoRef,
   } = useCalling(user);
 
   useEffect(() => {
@@ -163,7 +166,7 @@ const Chat = () => {
         <ActiveCall
           participantName={
             activeCall.caller_id === user.id
-              ? null // Will be filled from participant data
+              ? null
               : incomingCall?.caller_profile?.display_name || null
           }
           participantAvatar={
@@ -172,7 +175,10 @@ const Chat = () => {
               : incomingCall?.caller_profile?.avatar_url || null
           }
           onEndCall={endCall}
-          audioRef={audioRef}
+          onToggleVideo={toggleVideo}
+          onToggleAudio={toggleAudio}
+          localVideoRef={localVideoRef}
+          remoteVideoRef={remoteVideoRef}
         />
       )}
     </div>

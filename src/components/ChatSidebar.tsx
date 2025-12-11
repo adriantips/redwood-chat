@@ -2,7 +2,31 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, MessageSquare, LogOut, User as UserIcon } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Plus, MessageSquare, LogOut, User as UserIcon, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
@@ -16,19 +40,22 @@ interface Conversation {
 interface ChatSidebarProps {
   user: User;
   currentConversationId: string | null;
-  onConversationSelect: (id: string) => void;
+  onConversationSelect: (id: string | null) => void;
   onNewConversation: () => void;
 }
 
 const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewConversation }: ChatSidebarProps) => {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [newTitle, setNewTitle] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
     loadConversations();
     
-    // Subscribe to realtime updates for conversations
     const channel = supabase
       .channel('sidebar-conversations')
       .on(
@@ -90,6 +117,82 @@ const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewC
     setConversations(convos);
   };
 
+  const handleRename = (conv: Conversation) => {
+    setSelectedConversation(conv);
+    setNewTitle(conv.title || "");
+    setRenameDialogOpen(true);
+  };
+
+  const handleDelete = (conv: Conversation) => {
+    setSelectedConversation(conv);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmRename = async () => {
+    if (!selectedConversation || !newTitle.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from("conversations")
+        .update({ title: newTitle.trim() })
+        .eq("id", selectedConversation.id);
+
+      if (error) throw error;
+
+      toast({ title: "Chat renamed" });
+      setRenameDialogOpen(false);
+      setSelectedConversation(null);
+      setNewTitle("");
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error renaming chat",
+        description: error.message,
+      });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedConversation) return;
+
+    try {
+      // Delete messages first
+      await supabase
+        .from("messages")
+        .delete()
+        .eq("conversation_id", selectedConversation.id);
+
+      // Delete participants
+      await supabase
+        .from("conversation_participants")
+        .delete()
+        .eq("conversation_id", selectedConversation.id);
+
+      // Delete conversation
+      const { error } = await supabase
+        .from("conversations")
+        .delete()
+        .eq("id", selectedConversation.id);
+
+      if (error) throw error;
+
+      // Clear selection if deleted conversation was selected
+      if (currentConversationId === selectedConversation.id) {
+        onConversationSelect(null);
+      }
+
+      toast({ title: "Chat deleted" });
+      setDeleteDialogOpen(false);
+      setSelectedConversation(null);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error deleting chat",
+        description: error.message,
+      });
+    }
+  };
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     window.location.href = "/auth";
@@ -113,22 +216,55 @@ const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewC
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-1">
           {conversations.map((conv) => (
-            <button
+            <div
               key={conv.id}
-              onClick={() => onConversationSelect(conv.id)}
-              className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+              className={`group flex items-center gap-1 rounded-lg transition-colors ${
                 currentConversationId === conv.id
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "hover:bg-sidebar-accent/50 text-sidebar-foreground"
+                  ? "bg-sidebar-accent"
+                  : "hover:bg-sidebar-accent/50"
               }`}
             >
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate text-sm">
-                  {conv.title || "New Conversation"}
-                </span>
-              </div>
-            </button>
+              <button
+                onClick={() => onConversationSelect(conv.id)}
+                className={`flex-1 text-left px-3 py-2 ${
+                  currentConversationId === conv.id
+                    ? "text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate text-sm">
+                    {conv.title || "New Conversation"}
+                  </span>
+                </div>
+              </button>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleRename(conv)}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => handleDelete(conv)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           ))}
         </div>
       </ScrollArea>
@@ -165,6 +301,47 @@ const ChatSidebar = ({ user, currentConversationId, onConversationSelect, onNewC
           Sign out
         </Button>
       </div>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Chat</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="Enter chat name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") confirmRename();
+            }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmRename}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this chat and all its messages. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
