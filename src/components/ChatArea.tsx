@@ -10,6 +10,8 @@ import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import VoiceRecorder from "./VoiceRecorder";
 import ImageUpload from "./ImageUpload";
+import CallButton from "./CallButton";
+import { useNotifications } from "@/hooks/useNotifications";
 
 interface Message {
   id: string;
@@ -28,6 +30,8 @@ interface Message {
 interface ChatAreaProps {
   user: User;
   conversationId: string | null;
+  onCall?: (conversationId: string, receiverId: string) => void;
+  isCalling?: boolean;
 }
 
 interface TypingUser {
@@ -36,35 +40,73 @@ interface TypingUser {
   avatar_url?: string | null;
 }
 
-const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
+interface Participant {
+  user_id: string;
+  profiles?: {
+    display_name: string | null;
+    avatar_url: string | null;
+  };
+}
+
+const ChatArea = ({ user, conversationId, onCall, isCalling }: ChatAreaProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const { toast } = useToast();
+  const { notifyMessage } = useNotifications();
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (conversationId) {
       loadMessages();
+      loadParticipants();
       const unsubMessages = subscribeToMessages();
       const unsubPresence = subscribeToPresence();
       
       return () => {
-        // Clear typing timeout
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
         }
-        // Broadcast typing stopped before leaving
         broadcastTyping(false);
-        // Cleanup subscriptions
         unsubMessages();
         unsubPresence();
       };
     }
   }, [conversationId]);
+
+  const loadParticipants = async () => {
+    if (!conversationId) return;
+    
+    const { data } = await supabase
+      .from("conversation_participants")
+      .select("user_id")
+      .eq("conversation_id", conversationId);
+    
+    if (data) {
+      const userIds = data.map((p) => p.user_id).filter((id) => id !== user.id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", userIds);
+      
+      setParticipants(
+        userIds.map((userId) => ({
+          user_id: userId,
+          profiles: profiles?.find((p) => p.id === userId),
+        }))
+      );
+    }
+  };
+
+  const handleCall = () => {
+    if (conversationId && participants.length > 0 && onCall) {
+      onCall(conversationId, participants[0].user_id);
+    }
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -132,18 +174,27 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
           filter: `conversation_id=eq.${conversationId}`,
         },
         async (payload) => {
-          const newMessage = payload.new as Message;
+          const newMsg = payload.new as Message;
           
           // Fetch profile data for the new message
           const { data: profile } = await supabase
             .from("profiles")
             .select("display_name, avatar_url")
-            .eq("id", newMessage.user_id)
+            .eq("id", newMsg.user_id)
             .maybeSingle();
+          
+          // Send notification if message is from someone else
+          if (newMsg.user_id !== user.id) {
+            const senderName = profile?.display_name || "Someone";
+            const preview = newMsg.message_type === "text" 
+              ? newMsg.content.substring(0, 50) 
+              : newMsg.message_type === "image" ? "📷 Image" : "🎤 Voice message";
+            notifyMessage(senderName, preview);
+          }
           
           setMessages((prev) => [
             ...prev,
-            { ...newMessage, profiles: profile || undefined }
+            { ...newMsg, profiles: profile || undefined }
           ]);
         }
       )
@@ -388,6 +439,22 @@ const ChatArea = ({ user, conversationId }: ChatAreaProps) => {
 
   return (
     <div className="flex-1 flex flex-col bg-background">
+      {/* Header with call button */}
+      {participants.length > 0 && (
+        <div className="border-b border-border p-3 bg-card flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">
+              {participants[0].profiles?.display_name || "Chat"}
+            </span>
+          </div>
+          <CallButton 
+            onClick={handleCall} 
+            disabled={!onCall || participants.length === 0}
+            isCalling={isCalling}
+          />
+        </div>
+      )}
+      
       <ScrollArea className="flex-1 p-4">
         <div className="max-w-3xl mx-auto space-y-4">
           {messages.map((message) => (
