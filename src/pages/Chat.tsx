@@ -23,12 +23,14 @@ const Chat = () => {
     activeCall,
     incomingCall,
     isCalling,
+    isScreenSharing,
     initiateCall,
     answerCall,
     declineCall,
     endCall,
     toggleVideo,
     toggleAudio,
+    toggleScreenShare,
     localVideoRef,
     remoteVideoRef,
   } = useCalling(user);
@@ -177,6 +179,8 @@ const Chat = () => {
           onEndCall={endCall}
           onToggleVideo={toggleVideo}
           onToggleAudio={toggleAudio}
+          onToggleScreenShare={toggleScreenShare}
+          isScreenSharing={isScreenSharing}
           localVideoRef={localVideoRef}
           remoteVideoRef={remoteVideoRef}
         />

@@ -462,6 +462,7 @@ const ChatArea = ({ user, conversationId, onCall, isCalling }: ChatAreaProps) =>
               key={message.id}
               message={message}
               isOwn={message.user_id === user.id}
+              currentUserId={user.id}
             />
           ))}
           {typingUsers.length > 0 && <TypingIndicator users={typingUsers} />}
