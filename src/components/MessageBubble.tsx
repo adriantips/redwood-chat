@@ -1,6 +1,7 @@
 import { Sparkles } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import MediaMessage from "./MediaMessage";
+import MessageReactions from "./MessageReactions";
 
 interface Message {
   id: string;
@@ -19,9 +20,10 @@ interface Message {
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
+  currentUserId: string;
 }
 
-const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
+const MessageBubble = ({ message, isOwn, currentUserId }: MessageBubbleProps) => {
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -29,7 +31,7 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
 
   if (message.is_copilot) {
     return (
-      <div className="flex gap-3 items-start">
+      <div className="flex gap-3 items-start group">
         <div className="w-8 h-8 rounded-full bg-copilot flex items-center justify-center flex-shrink-0">
           <Sparkles className="w-4 h-4 text-copilot-foreground" />
         </div>
@@ -41,6 +43,7 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
           <div className="bg-card rounded-2xl rounded-tl-md px-4 py-3 border border-copilot/20 shadow-sm">
             <p className="text-sm text-card-foreground whitespace-pre-wrap">{message.content}</p>
           </div>
+          <MessageReactions messageId={message.id} userId={currentUserId} isOwn={false} />
         </div>
       </div>
     );
@@ -51,7 +54,7 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
   const initial = displayName[0]?.toUpperCase() || "U";
 
   return (
-    <div className={`flex gap-3 items-start ${isOwn ? "flex-row-reverse" : ""}`}>
+    <div className={`flex gap-3 items-start group ${isOwn ? "flex-row-reverse" : ""}`}>
       <Avatar className="w-8 h-8 flex-shrink-0">
         <AvatarImage src={avatarUrl} />
         <AvatarFallback className={isOwn ? "bg-message-user text-message-user-foreground" : "bg-muted text-muted-foreground"}>
@@ -78,6 +81,7 @@ const MessageBubble = ({ message, isOwn }: MessageBubbleProps) => {
             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
           )}
         </div>
+        <MessageReactions messageId={message.id} userId={currentUserId} isOwn={isOwn} />
       </div>
     </div>
   );
