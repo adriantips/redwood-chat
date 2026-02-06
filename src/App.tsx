@@ -7,6 +7,7 @@ import Chat from "./pages/Chat";
 import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import EffectsOverlay from "./components/EffectsOverlay";
 
 const queryClient = new QueryClient();
 
@@ -15,6 +16,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <EffectsOverlay />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Chat />} />
