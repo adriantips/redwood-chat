@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Mail, MessageSquare } from "lucide-react";
+import { Loader2, Mail, MessageSquare, Apple } from "lucide-react";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -68,6 +68,21 @@ const Auth = () => {
     }
   };
 
+  const handleAppleAuth = async () => {
+    try {
+      const { error } = await lovable.auth.signInWithOAuth("apple", {
+        redirect_uri: window.location.origin,
+      });
+      if (error) throw error;
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-subtle p-4">
       <Card className="w-full max-w-md shadow-lg border-border/50">
@@ -93,6 +108,16 @@ const Auth = () => {
           >
             <Mail className="w-4 h-4 mr-2" />
             Continue with Google
+          </Button>
+
+          <Button
+            onClick={handleAppleAuth}
+            variant="outline"
+            className="w-full border-2 hover:bg-muted/50 transition-colors"
+            type="button"
+          >
+            <Apple className="w-4 h-4 mr-2" />
+            Continue with Apple
           </Button>
 
           <div className="relative">
