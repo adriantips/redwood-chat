@@ -72,6 +72,21 @@ export const useCalling = (user: User | null) => {
     setIsScreenSharing(false);
   }, []);
 
+  const sendSignal = useCallback((targetUserId: string, event: string, payload: any) => {
+    const targetChannel = supabase.channel(`signaling-${targetUserId}`);
+    targetChannel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        targetChannel.send({
+          type: "broadcast",
+          event,
+          payload,
+        });
+        // Unsubscribe after a short delay to avoid leaking channels
+        setTimeout(() => supabase.removeChannel(targetChannel), 2000);
+      }
+    });
+  }, []);
+
   // Create peer connection for a specific user
   const createPeerConnection = useCallback((targetUserId: string, callId: string): RTCPeerConnection => {
     console.log("Creating peer connection for:", targetUserId);
@@ -88,7 +103,6 @@ export const useCalling = (user: User | null) => {
       console.log("Received remote track from:", targetUserId);
       const stream = event.streams[0];
       
-      // For single call, use the remote video ref
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = stream;
       }
@@ -110,15 +124,11 @@ export const useCalling = (user: User | null) => {
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log("Sending ICE candidate to:", targetUserId);
-        signalingChannel.current?.send({
-          type: "broadcast",
-          event: "ice-candidate",
-          payload: { 
-            candidate: event.candidate, 
-            callId, 
-            from: user?.id,
-            to: targetUserId 
-          },
+        sendSignal(targetUserId, "ice-candidate", {
+          candidate: event.candidate,
+          callId,
+          from: user?.id,
+          to: targetUserId,
         });
       }
     };
@@ -136,7 +146,7 @@ export const useCalling = (user: User | null) => {
 
     peerConnections.current.set(targetUserId, pc);
     return pc;
-  }, [user?.id]);
+  }, [user?.id, sendSignal]);
 
   // Start WebRTC connection
   const startWebRTC = useCallback(async (callId: string, targetUserId: string, isInitiator: boolean) => {
@@ -166,10 +176,11 @@ export const useCalling = (user: User | null) => {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         
-        signalingChannel.current?.send({
-          type: "broadcast",
-          event: "offer",
-          payload: { offer, callId, from: user?.id, to: targetUserId },
+        sendSignal(targetUserId, "offer", {
+          offer,
+          callId,
+          from: user?.id,
+          to: targetUserId,
         });
       }
     } catch (error) {
@@ -203,10 +214,11 @@ export const useCalling = (user: User | null) => {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           
-          signalingChannel.current?.send({
-            type: "broadcast",
-            event: "answer",
-            payload: { answer, callId: payload.callId, from: user.id, to: payload.from },
+          sendSignal(payload.from, "answer", {
+            answer,
+            callId: payload.callId,
+            from: user.id,
+            to: payload.from,
           });
         } catch (err) {
           console.error("Error handling offer:", err);

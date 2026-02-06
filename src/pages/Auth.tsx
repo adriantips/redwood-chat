@@ -7,13 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Mail, MessageSquare, Apple } from "lucide-react";
+import { Loader2, Mail, MessageSquare, Apple, Phone } from "lucide-react";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [authMode, setAuthMode] = useState<"email" | "phone">("email");
+  const [otpSent, setOtpSent] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -23,10 +27,7 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         toast({ title: "Welcome back!" });
         navigate("/");
@@ -34,20 +35,37 @@ const Auth = () => {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-          },
+          options: { emailRedirectTo: `${window.location.origin}/` },
         });
         if (error) throw error;
-        toast({ title: "Account created!", description: "You can now sign in." });
+        toast({ title: "Account created!", description: "Check your email to verify." });
         setIsLogin(true);
       }
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      if (!otpSent) {
+        const { error } = await supabase.auth.signInWithOtp({ phone });
+        if (error) throw error;
+        setOtpSent(true);
+        toast({ title: "OTP sent!", description: "Check your phone for the verification code." });
+      } else {
+        const { error } = await supabase.auth.verifyOtp({ phone, token: otp, type: "sms" });
+        if (error) throw error;
+        toast({ title: "Welcome!" });
+        navigate("/");
+      }
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
       setLoading(false);
     }
@@ -60,11 +78,7 @@ const Auth = () => {
       });
       if (error) throw error;
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
+      toast({ variant: "destructive", title: "Error", description: error.message });
     }
   };
 
@@ -75,11 +89,7 @@ const Auth = () => {
       });
       if (error) throw error;
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
-      });
+      toast({ variant: "destructive", title: "Error", description: error.message });
     }
   };
 
@@ -100,74 +110,144 @@ const Auth = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button
-            onClick={handleGoogleAuth}
-            variant="outline"
-            className="w-full border-2 hover:bg-muted/50 transition-colors"
-            type="button"
-          >
-            <Mail className="w-4 h-4 mr-2" />
-            Continue with Google
-          </Button>
-
-          <Button
-            onClick={handleAppleAuth}
-            variant="outline"
-            className="w-full border-2 hover:bg-muted/50 transition-colors"
-            type="button"
-          >
-            <Apple className="w-4 h-4 mr-2" />
-            Continue with Apple
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleGoogleAuth}
+              variant="outline"
+              className="flex-1 border-2 hover:bg-muted/50 transition-colors"
+              type="button"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Google
+            </Button>
+            <Button
+              onClick={handleAppleAuth}
+              variant="outline"
+              className="flex-1 border-2 hover:bg-muted/50 transition-colors"
+              type="button"
+            >
+              <Apple className="w-4 h-4 mr-2" />
+              Apple
+            </Button>
+          </div>
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with email</span>
+              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
             </div>
           </div>
 
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="border-2 focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="border-2 focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {isLogin ? "Signing in..." : "Creating account..."}
-                </>
-              ) : isLogin ? (
-                "Sign in"
-              ) : (
-                "Sign up"
-              )}
+          {/* Auth mode toggle */}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={authMode === "email" ? "default" : "outline"}
+              size="sm"
+              className="flex-1"
+              onClick={() => { setAuthMode("email"); setOtpSent(false); }}
+            >
+              <Mail className="w-4 h-4 mr-1" />
+              Email
             </Button>
-          </form>
+            <Button
+              type="button"
+              variant={authMode === "phone" ? "default" : "outline"}
+              size="sm"
+              className="flex-1"
+              onClick={() => { setAuthMode("phone"); setOtpSent(false); }}
+            >
+              <Phone className="w-4 h-4 mr-1" />
+              Phone
+            </Button>
+          </div>
+
+          {authMode === "email" ? (
+            <form onSubmit={handleEmailAuth} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="border-2 focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="border-2 focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {isLogin ? "Signing in..." : "Creating account..."}
+                  </>
+                ) : isLogin ? "Sign in" : "Sign up"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handlePhoneAuth} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+1234567890"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                  disabled={otpSent}
+                  className="border-2 focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              {otpSent && (
+                <div className="space-y-2">
+                  <Label htmlFor="otp">Verification Code</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    placeholder="123456"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    required
+                    maxLength={6}
+                    className="border-2 focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : otpSent ? "Verify Code" : "Send Code"}
+              </Button>
+              {otpSent && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => { setOtpSent(false); setOtp(""); }}
+                >
+                  Change phone number
+                </Button>
+              )}
+            </form>
+          )}
 
           <div className="text-center text-sm">
             <button
