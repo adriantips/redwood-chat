@@ -11,10 +11,12 @@ import {
   Vibrate,
   Users,
   Zap,
+  SmilePlus,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getEffectsChannel, subscribeEffectsChannel, unsubscribeEffectsChannel } from "@/lib/effectsChannel";
 import AdminUserManager from "./AdminUserManager";
+import GifPicker from "./GifPicker";
 
 type Tab = "effects" | "users";
 
@@ -22,6 +24,7 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
   const [minimized, setMinimized] = useState(false);
   const [tab, setTab] = useState<Tab>("effects");
   const [broadcastText, setBroadcastText] = useState("");
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [position, setPosition] = useState({ x: 60, y: 60 });
   const [dragging, setDragging] = useState(false);
   const [channelReady, setChannelReady] = useState(false);
@@ -149,6 +152,30 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
                     <Vibrate className="w-4 h-4 mr-2" />
                     Screen Shake (3s)
                   </Button>
+
+                  <div className="relative">
+                    <Button
+                      onClick={() => setShowGifPicker((p) => !p)}
+                      disabled={!channelReady}
+                      variant="outline"
+                      className="w-full font-bold"
+                      size="sm"
+                    >
+                      <SmilePlus className="w-4 h-4 mr-2" />
+                      Broadcast GIF
+                    </Button>
+                    {showGifPicker && (
+                      <div className="absolute bottom-full mb-1 left-0 z-[10000]">
+                        <GifPicker
+                          onSelect={(gifUrl) => {
+                            sendEffect("gif", { url: gifUrl });
+                            setShowGifPicker(false);
+                          }}
+                          onClose={() => setShowGifPicker(false)}
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   <div className="flex gap-2">
                     <Input

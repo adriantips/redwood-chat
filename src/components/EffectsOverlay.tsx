@@ -6,6 +6,7 @@ const EffectsOverlay = () => {
   const [funnyActive, setFunnyActive] = useState(false);
   const [shakeActive, setShakeActive] = useState(false);
   const [broadcastText, setBroadcastText] = useState<string | null>(null);
+  const [broadcastGif, setBroadcastGif] = useState<string | null>(null);
   const [emojis, setEmojis] = useState<{ id: number; x: number; y: number; emoji: string }[]>([]);
 
   const triggerDisco = useCallback(() => {
@@ -44,6 +45,11 @@ const EffectsOverlay = () => {
     setTimeout(() => setBroadcastText(null), 5000);
   }, []);
 
+  const triggerGif = useCallback((url: string) => {
+    setBroadcastGif(url);
+    setTimeout(() => setBroadcastGif(null), 8000);
+  }, []);
+
   useEffect(() => {
     const channel = subscribeEffectsChannel();
 
@@ -63,6 +69,9 @@ const EffectsOverlay = () => {
           case "shake":
             triggerShake();
             break;
+          case "gif":
+            if (payload.url) triggerGif(payload.url as string);
+            break;
         }
       })
       .subscribe((status) => {
@@ -72,7 +81,7 @@ const EffectsOverlay = () => {
     return () => {
       unsubscribeEffectsChannel();
     };
-  }, [triggerDisco, triggerFunny, triggerText, triggerShake]);
+  }, [triggerDisco, triggerFunny, triggerText, triggerShake, triggerGif]);
 
   return (
     <>
@@ -107,6 +116,15 @@ const EffectsOverlay = () => {
         <div className="fixed top-0 left-0 right-0 z-[9991] flex justify-center pointer-events-none animate-fade-in">
           <div className="bg-primary text-primary-foreground px-6 py-3 rounded-b-xl shadow-xl text-lg font-bold max-w-2xl text-center">
             Adrian: {broadcastText}
+          </div>
+        </div>
+      )}
+
+      {broadcastGif && (
+        <div className="fixed inset-0 z-[9992] flex items-center justify-center pointer-events-none animate-fade-in">
+          <div className="bg-card/90 backdrop-blur-sm p-3 rounded-2xl shadow-2xl border-2 border-primary max-w-md">
+            <p className="text-xs font-bold text-center mb-2 text-primary">🔥 Admin GIF</p>
+            <img src={broadcastGif} alt="Broadcast GIF" className="rounded-lg max-h-[300px] w-auto mx-auto" />
           </div>
         </div>
       )}
