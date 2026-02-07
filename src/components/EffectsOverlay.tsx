@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
-
-const CHANNEL_NAME = "admin-effects";
+import { subscribeEffectsChannel, unsubscribeEffectsChannel } from "@/lib/effectsChannel";
 
 const EffectsOverlay = () => {
   const [discoActive, setDiscoActive] = useState(false);
@@ -41,9 +39,11 @@ const EffectsOverlay = () => {
   }, []);
 
   useEffect(() => {
-    const channel = supabase.channel(CHANNEL_NAME);
+    const channel = subscribeEffectsChannel();
+
     channel
       .on("broadcast", { event: "effect" }, ({ payload }) => {
+        console.log("[Effects] Received effect:", payload.effect);
         switch (payload.effect) {
           case "disco":
             triggerDisco();
@@ -56,23 +56,23 @@ const EffectsOverlay = () => {
             break;
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log("[Effects] Channel status:", status);
+      });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribeEffectsChannel();
     };
   }, [triggerDisco, triggerFunny, triggerText]);
 
   return (
     <>
-      {/* Disco overlay */}
       {discoActive && (
         <div className="fixed inset-0 z-[9990] pointer-events-none animate-fade-in">
           <div
             className="absolute inset-0 mix-blend-multiply opacity-30"
             style={{
-              background:
-                "linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet, red)",
+              background: "linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet, red)",
               backgroundSize: "400% 400%",
               animation: "discoShift 1s ease infinite",
             }}
@@ -80,18 +80,13 @@ const EffectsOverlay = () => {
         </div>
       )}
 
-      {/* Funny emoji rain */}
       {funnyActive && (
         <div className="fixed inset-0 z-[9990] pointer-events-none overflow-hidden">
           {emojis.map((e) => (
             <span
               key={e.id}
               className="absolute text-3xl animate-bounce"
-              style={{
-                left: `${e.x}%`,
-                top: `${e.y}%`,
-                animationDuration: `${0.5 + Math.random()}s`,
-              }}
+              style={{ left: `${e.x}%`, top: `${e.y}%`, animationDuration: `${0.5 + Math.random()}s` }}
             >
               {e.emoji}
             </span>
@@ -99,7 +94,6 @@ const EffectsOverlay = () => {
         </div>
       )}
 
-      {/* Broadcast text banner */}
       {broadcastText && (
         <div className="fixed top-0 left-0 right-0 z-[9991] flex justify-center pointer-events-none animate-fade-in">
           <div className="bg-primary text-primary-foreground px-6 py-3 rounded-b-xl shadow-xl text-lg font-bold max-w-2xl text-center">
@@ -108,7 +102,6 @@ const EffectsOverlay = () => {
         </div>
       )}
 
-      {/* Inject disco keyframe */}
       {discoActive && (
         <style>{`
           @keyframes discoShift {
