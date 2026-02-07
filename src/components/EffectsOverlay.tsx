@@ -4,6 +4,7 @@ import { subscribeEffectsChannel, unsubscribeEffectsChannel } from "@/lib/effect
 const EffectsOverlay = () => {
   const [discoActive, setDiscoActive] = useState(false);
   const [funnyActive, setFunnyActive] = useState(false);
+  const [shakeActive, setShakeActive] = useState(false);
   const [broadcastText, setBroadcastText] = useState<string | null>(null);
   const [emojis, setEmojis] = useState<{ id: number; x: number; y: number; emoji: string }[]>([]);
 
@@ -33,6 +34,11 @@ const EffectsOverlay = () => {
     }, 10000);
   }, []);
 
+  const triggerShake = useCallback(() => {
+    setShakeActive(true);
+    setTimeout(() => setShakeActive(false), 3000);
+  }, []);
+
   const triggerText = useCallback((text: string) => {
     setBroadcastText(text);
     setTimeout(() => setBroadcastText(null), 5000);
@@ -54,6 +60,9 @@ const EffectsOverlay = () => {
           case "text":
             if (payload.text) triggerText(payload.text as string);
             break;
+          case "shake":
+            triggerShake();
+            break;
         }
       })
       .subscribe((status) => {
@@ -63,7 +72,7 @@ const EffectsOverlay = () => {
     return () => {
       unsubscribeEffectsChannel();
     };
-  }, [triggerDisco, triggerFunny, triggerText]);
+  }, [triggerDisco, triggerFunny, triggerText, triggerShake]);
 
   return (
     <>
@@ -102,13 +111,34 @@ const EffectsOverlay = () => {
         </div>
       )}
 
-      {discoActive && (
+      {shakeActive && (
+        <div className="fixed inset-0 z-[9989] pointer-events-none" style={{ animation: "screenShake 0.15s ease-in-out infinite" }} />
+      )}
+
+      <style>{`
+        @keyframes discoShift {
+          0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
+          50% { background-position: 100% 50%; filter: hue-rotate(180deg); }
+          100% { background-position: 0% 50%; filter: hue-rotate(360deg); }
+        }
+        @keyframes screenShake {
+          0% { transform: translate(0, 0); }
+          10% { transform: translate(-8px, -6px); }
+          20% { transform: translate(8px, 4px); }
+          30% { transform: translate(-6px, 8px); }
+          40% { transform: translate(6px, -4px); }
+          50% { transform: translate(-4px, 6px); }
+          60% { transform: translate(4px, -8px); }
+          70% { transform: translate(-8px, 4px); }
+          80% { transform: translate(8px, -6px); }
+          90% { transform: translate(-4px, -4px); }
+          100% { transform: translate(0, 0); }
+        }
+      `}</style>
+
+      {shakeActive && (
         <style>{`
-          @keyframes discoShift {
-            0% { background-position: 0% 50%; filter: hue-rotate(0deg); }
-            50% { background-position: 100% 50%; filter: hue-rotate(180deg); }
-            100% { background-position: 0% 50%; filter: hue-rotate(360deg); }
-          }
+          body { animation: screenShake 0.15s ease-in-out infinite; }
         `}</style>
       )}
     </>

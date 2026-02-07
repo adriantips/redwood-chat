@@ -8,6 +8,7 @@ import {
   X,
   Minus,
   GripHorizontal,
+  Vibrate,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getEffectsChannel, subscribeEffectsChannel, unsubscribeEffectsChannel } from "@/lib/effectsChannel";
@@ -63,6 +64,7 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
 
   const handleDisco = () => sendEffect("disco");
   const handleFunny = () => sendEffect("funny");
+  const handleShake = () => sendEffect("shake");
   const handleBroadcast = () => {
     if (!broadcastText.trim()) return;
     sendEffect("text", { text: broadcastText.trim() });
@@ -127,6 +129,11 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
             <Button onClick={handleFunny} disabled={!channelReady} variant="outline" className="w-full font-bold" size="sm">
               <Laugh className="w-4 h-4 mr-2" />
               Funny Mode (10s)
+            </Button>
+
+            <Button onClick={handleShake} disabled={!channelReady} variant="outline" className="w-full font-bold" size="sm">
+              <Vibrate className="w-4 h-4 mr-2" />
+              Screen Shake (3s)
             </Button>
 
             <div className="flex gap-2">
