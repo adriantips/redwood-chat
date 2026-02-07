@@ -9,12 +9,18 @@ import {
   Minus,
   GripHorizontal,
   Vibrate,
+  Users,
+  Zap,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getEffectsChannel, subscribeEffectsChannel, unsubscribeEffectsChannel } from "@/lib/effectsChannel";
+import AdminUserManager from "./AdminUserManager";
+
+type Tab = "effects" | "users";
 
 const AdminPanel = ({ onClose }: { onClose: () => void }) => {
   const [minimized, setMinimized] = useState(false);
+  const [tab, setTab] = useState<Tab>("effects");
   const [broadcastText, setBroadcastText] = useState("");
   const [position, setPosition] = useState({ x: 60, y: 60 });
   const [dragging, setDragging] = useState(false);
@@ -23,18 +29,8 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Reuse the shared channel - EffectsOverlay already subscribes
     const channel = subscribeEffectsChannel();
-
-    // Check if already subscribed
-    const checkReady = () => {
-      // The channel may already be subscribed by EffectsOverlay
-      setChannelReady(true);
-    };
-
-    // Small delay to ensure subscription is ready
-    const timer = setTimeout(checkReady, 500);
-
+    const timer = setTimeout(() => setChannelReady(true), 500);
     return () => {
       clearTimeout(timer);
       unsubscribeEffectsChannel();
@@ -44,15 +40,11 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
   const sendEffect = useCallback(
     async (effect: string, payload?: Record<string, unknown>) => {
       const channel = getEffectsChannel();
-
       const result = await channel.send({
         type: "broadcast",
         event: "effect",
         payload: { effect, ...payload },
       });
-
-      console.log("[AdminPanel] Send result:", result);
-
       if (result === "ok") {
         toast({ title: `🎉 ${effect} activated!` });
       } else {
@@ -92,7 +84,7 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <div className="fixed z-[9999] select-none" style={{ left: position.x, top: position.y }}>
-      <div className="bg-card border-2 border-primary rounded-xl shadow-xl overflow-hidden min-w-[280px] animate-scale-in">
+      <div className="bg-card border-2 border-primary rounded-xl shadow-xl overflow-hidden min-w-[300px] max-w-[340px] animate-scale-in">
         <div
           onMouseDown={onMouseDown}
           className="flex items-center justify-between px-3 py-2 bg-primary text-primary-foreground cursor-grab active:cursor-grabbing"
@@ -112,43 +104,70 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
         </div>
 
         {!minimized && (
-          <div className="p-3 space-y-3">
-            {!channelReady && (
-              <p className="text-xs text-muted-foreground text-center">Connecting...</p>
-            )}
-            <Button
-              onClick={handleDisco}
-              disabled={!channelReady}
-              className="w-full bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 hover:opacity-90 text-white font-bold"
-              size="sm"
-            >
-              <Disc3 className="w-4 h-4 mr-2 animate-spin" />
-              Rainbow Disco (30s)
-            </Button>
-
-            <Button onClick={handleFunny} disabled={!channelReady} variant="outline" className="w-full font-bold" size="sm">
-              <Laugh className="w-4 h-4 mr-2" />
-              Funny Mode (10s)
-            </Button>
-
-            <Button onClick={handleShake} disabled={!channelReady} variant="outline" className="w-full font-bold" size="sm">
-              <Vibrate className="w-4 h-4 mr-2" />
-              Screen Shake (3s)
-            </Button>
-
-            <div className="flex gap-2">
-              <Input
-                value={broadcastText}
-                onChange={(e) => setBroadcastText(e.target.value)}
-                placeholder="Broadcast message..."
-                className="text-sm"
-                onKeyDown={(e) => { if (e.key === "Enter") handleBroadcast(); }}
-              />
-              <Button onClick={handleBroadcast} disabled={!channelReady} size="sm" variant="secondary">
-                <MessageSquareText className="w-4 h-4" />
-              </Button>
+          <>
+            <div className="flex border-b">
+              <button
+                onClick={() => setTab("effects")}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${
+                  tab === "effects" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" /> Effects
+              </button>
+              <button
+                onClick={() => setTab("users")}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${
+                  tab === "users" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" /> Users
+              </button>
             </div>
-          </div>
+
+            <div className="p-3">
+              {tab === "effects" && (
+                <div className="space-y-3">
+                  {!channelReady && (
+                    <p className="text-xs text-muted-foreground text-center">Connecting...</p>
+                  )}
+                  <Button
+                    onClick={handleDisco}
+                    disabled={!channelReady}
+                    className="w-full bg-gradient-to-r from-red-500 via-yellow-500 to-blue-500 hover:opacity-90 text-white font-bold"
+                    size="sm"
+                  >
+                    <Disc3 className="w-4 h-4 mr-2 animate-spin" />
+                    Rainbow Disco (30s)
+                  </Button>
+
+                  <Button onClick={handleFunny} disabled={!channelReady} variant="outline" className="w-full font-bold" size="sm">
+                    <Laugh className="w-4 h-4 mr-2" />
+                    Funny Mode (10s)
+                  </Button>
+
+                  <Button onClick={handleShake} disabled={!channelReady} variant="outline" className="w-full font-bold" size="sm">
+                    <Vibrate className="w-4 h-4 mr-2" />
+                    Screen Shake (3s)
+                  </Button>
+
+                  <div className="flex gap-2">
+                    <Input
+                      value={broadcastText}
+                      onChange={(e) => setBroadcastText(e.target.value)}
+                      placeholder="Broadcast message..."
+                      className="text-sm"
+                      onKeyDown={(e) => { if (e.key === "Enter") handleBroadcast(); }}
+                    />
+                    <Button onClick={handleBroadcast} disabled={!channelReady} size="sm" variant="secondary">
+                      <MessageSquareText className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {tab === "users" && <AdminUserManager />}
+            </div>
+          </>
         )}
       </div>
     </div>
