@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Sparkles, Loader2 } from "lucide-react";
+import { Send, Sparkles, Loader2, SmilePlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
 import MessageBubble from "./MessageBubble";
@@ -11,6 +11,7 @@ import TypingIndicator from "./TypingIndicator";
 import VoiceRecorder from "./VoiceRecorder";
 import ImageUpload from "./ImageUpload";
 import CallButton from "./CallButton";
+import GifPicker from "./GifPicker";
 import { useNotifications } from "@/hooks/useNotifications";
 
 interface Message {
@@ -55,6 +56,7 @@ const ChatArea = ({ user, conversationId, onCall, isCalling }: ChatAreaProps) =>
   const [copilotLoading, setCopilotLoading] = useState(false);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const { toast } = useToast();
   const { notifyMessage } = useNotifications();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -291,16 +293,20 @@ const ChatArea = ({ user, conversationId, onCall, isCalling }: ChatAreaProps) =>
   };
 
   const sendMessage = async (content: string, isCopilot = false, messageType = "text", mediaUrl?: string) => {
-    if (!conversationId || (!content.trim() && messageType === "text")) return;
+    if (!conversationId || (!content.trim() && messageType === "text" && !mediaUrl)) return;
 
     setLoading(true);
     try {
+      const displayContent = content.trim() || 
+        (messageType === "image" ? "📷 Image" : 
+         messageType === "gif" ? "GIF" : "🎤 Voice message");
+      
       const { error } = await supabase.from("messages").insert({
         conversation_id: conversationId,
         user_id: user.id,
-        content: content.trim() || (messageType === "image" ? "📷 Image" : "🎤 Voice message"),
+        content: displayContent,
         is_copilot: isCopilot,
-        message_type: messageType,
+        message_type: messageType === "gif" ? "image" : messageType,
         media_url: mediaUrl,
       });
 
@@ -473,9 +479,28 @@ const ChatArea = ({ user, conversationId, onCall, isCalling }: ChatAreaProps) =>
       <div className="border-t border-border p-4 bg-card">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
           <div className="flex gap-2 items-end">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 relative">
               <ImageUpload onImageSelect={handleImageSelect} disabled={loading} />
               <VoiceRecorder onRecordingComplete={handleVoiceRecording} disabled={loading} />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9"
+                onClick={() => setShowGifPicker((p) => !p)}
+                disabled={loading}
+              >
+                <SmilePlus className="w-5 h-5" />
+              </Button>
+              {showGifPicker && (
+                <GifPicker
+                  onSelect={(gifUrl) => {
+                    sendMessage("GIF", false, "gif", gifUrl);
+                    setShowGifPicker(false);
+                  }}
+                  onClose={() => setShowGifPicker(false)}
+                />
+              )}
             </div>
             <div className="flex-1 relative">
               <Textarea
