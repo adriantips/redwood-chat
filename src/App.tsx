@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import EffectsOverlay from "./components/EffectsOverlay";
+import AdminPanelGlobal from "./components/AdminPanelGlobal";
 
 const queryClient = new QueryClient();
 
@@ -17,6 +18,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <EffectsOverlay />
+      <AdminPanelGlobal />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Chat />} />

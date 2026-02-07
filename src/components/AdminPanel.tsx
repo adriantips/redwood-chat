@@ -22,20 +22,27 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
   const dragOffset = useRef({ x: 0, y: 0 });
   const { toast } = useToast();
 
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  useEffect(() => {
+    const channel = supabase.channel(CHANNEL_NAME);
+    channel.subscribe();
+    channelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+      channelRef.current = null;
+    };
+  }, []);
+
   const sendEffect = useCallback(
     (effect: string, payload?: Record<string, unknown>) => {
-      const channel = supabase.channel(CHANNEL_NAME);
-      channel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          channel.send({
-            type: "broadcast",
-            event: "effect",
-            payload: { effect, ...payload },
-          });
-          toast({ title: `🎉 ${effect} activated!` });
-          setTimeout(() => supabase.removeChannel(channel), 1000);
-        }
+      if (!channelRef.current) return;
+      channelRef.current.send({
+        type: "broadcast",
+        event: "effect",
+        payload: { effect, ...payload },
       });
+      toast({ title: `🎉 ${effect} activated!` });
     },
     [toast]
   );
