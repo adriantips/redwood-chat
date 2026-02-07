@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, ArrowLeft } from "lucide-react";
-import AdminPanel from "@/components/AdminPanel";
 
 const Profile = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -18,29 +17,8 @@ const Profile = () => {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
-  const secretBuffer = useRef("");
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // Listen for secret code typed anywhere on the page
-  useEffect(() => {
-    const SECRET = "adrianisthegoat";
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      secretBuffer.current += e.key.toLowerCase();
-      if (secretBuffer.current.length > SECRET.length) {
-        secretBuffer.current = secretBuffer.current.slice(-SECRET.length);
-      }
-      if (secretBuffer.current === SECRET) {
-        setShowAdmin(true);
-        secretBuffer.current = "";
-        toast({ title: "🔥 Admin mode activated!" });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toast]);
 
   useEffect(() => {
     checkAuth();
@@ -160,7 +138,6 @@ const Profile = () => {
 
   return (
     <div className="min-h-screen bg-background p-8">
-      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
       <div className="max-w-2xl mx-auto">
         <Button
           variant="ghost"
