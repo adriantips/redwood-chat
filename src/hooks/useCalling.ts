@@ -19,31 +19,23 @@ interface Call {
   };
 }
 
-interface Participant {
-  oderId: string;
-  displayName: string | null;
-  stream: MediaStream | null;
-  peerConnection: RTCPeerConnection | null;
-}
-
 export const useCalling = (user: User | null) => {
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [incomingCall, setIncomingCall] = useState<Call | null>(null);
   const [isCalling, setIsCalling] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [participants, setParticipants] = useState<Map<string, Participant>>(new Map());
   const { toast } = useToast();
   const { notifyCall } = useNotifications();
-  
+
   const localStream = useRef<MediaStream | null>(null);
   const screenStream = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
-  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const signalingChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const callsChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const peerConnection = useRef<RTCPeerConnection | null>(null);
+  const callChannel = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
-  const iceServers = {
+  const iceServers: RTCConfiguration = {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
@@ -51,266 +43,234 @@ export const useCalling = (user: User | null) => {
     ],
   };
 
-  // Cleanup function
+  // Cleanup everything
   const endCallCleanup = useCallback(() => {
-    console.log("Cleaning up call...");
-    
-    // Stop all tracks
-    localStream.current?.getTracks().forEach((track) => track.stop());
-    screenStream.current?.getTracks().forEach((track) => track.stop());
-    
-    // Close all peer connections
-    peerConnections.current.forEach((pc) => pc.close());
-    peerConnections.current.clear();
-    
+    console.log("[Call] Cleaning up...");
+    localStream.current?.getTracks().forEach((t) => t.stop());
+    screenStream.current?.getTracks().forEach((t) => t.stop());
+    peerConnection.current?.close();
+    peerConnection.current = null;
     localStream.current = null;
     screenStream.current = null;
-    setParticipants(new Map());
+    pendingCandidates.current = [];
+
+    if (callChannel.current) {
+      supabase.removeChannel(callChannel.current);
+      callChannel.current = null;
+    }
+
     setActiveCall(null);
     setIncomingCall(null);
     setIsCalling(false);
     setIsScreenSharing(false);
   }, []);
 
-  const sendSignal = useCallback((targetUserId: string, event: string, payload: any) => {
-    const targetChannel = supabase.channel(`signaling-${targetUserId}`);
-    targetChannel.subscribe((status) => {
-      if (status === "SUBSCRIBED") {
-        targetChannel.send({
-          type: "broadcast",
-          event,
-          payload,
-        });
-        // Unsubscribe after a short delay to avoid leaking channels
-        setTimeout(() => supabase.removeChannel(targetChannel), 2000);
-      }
+  // Get user media
+  const acquireMedia = useCallback(async () => {
+    if (localStream.current) return localStream.current;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
     });
+    localStream.current = stream;
+    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    return stream;
   }, []);
 
-  // Create peer connection for a specific user
-  const createPeerConnection = useCallback((targetUserId: string, callId: string): RTCPeerConnection => {
-    console.log("Creating peer connection for:", targetUserId);
-    
-    const pc = new RTCPeerConnection(iceServers);
-    
-    // Add local tracks
-    localStream.current?.getTracks().forEach((track) => {
-      pc.addTrack(track, localStream.current!);
-    });
-
-    // Handle incoming tracks
-    pc.ontrack = (event) => {
-      console.log("Received remote track from:", targetUserId);
-      const stream = event.streams[0];
-      
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = stream;
+  // Join the shared signaling channel for a call
+  const joinCallChannel = useCallback(
+    (callId: string, targetUserId: string, isInitiator: boolean) => {
+      if (callChannel.current) {
+        supabase.removeChannel(callChannel.current);
       }
-      
-      setParticipants((prev) => {
-        const newMap = new Map(prev);
-        const existing = newMap.get(targetUserId);
-        newMap.set(targetUserId, {
-          oderId: targetUserId,
-          displayName: existing?.displayName || null,
-          stream,
-          peerConnection: pc,
-        });
-        return newMap;
+
+      const channelName = `call-${callId}`;
+      console.log("[Call] Joining signaling channel:", channelName, "initiator:", isInitiator);
+
+      const channel = supabase.channel(channelName, {
+        config: { broadcast: { self: false, ack: true } },
       });
-    };
 
-    // Handle ICE candidates
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        console.log("Sending ICE candidate to:", targetUserId);
-        sendSignal(targetUserId, "ice-candidate", {
-          candidate: event.candidate,
-          callId,
-          from: user?.id,
-          to: targetUserId,
-        });
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      console.log("ICE connection state:", pc.iceConnectionState);
-      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-        console.log("ICE connection failed/disconnected");
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log("Connection state:", pc.connectionState);
-    };
-
-    peerConnections.current.set(targetUserId, pc);
-    return pc;
-  }, [user?.id, sendSignal]);
-
-  // Start WebRTC connection
-  const startWebRTC = useCallback(async (callId: string, targetUserId: string, isInitiator: boolean) => {
-    try {
-      console.log("Starting WebRTC, isInitiator:", isInitiator, "target:", targetUserId);
-      
-      // Get user media if not already available
-      if (!localStream.current) {
-        localStream.current = await navigator.mediaDevices.getUserMedia({ 
-          audio: true,
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: "user"
+      channel
+        .on("broadcast", { event: "offer" }, async ({ payload }) => {
+          if (payload.from === user?.id) return;
+          console.log("[Call] Received offer");
+          try {
+            const pc = peerConnection.current;
+            if (!pc) return;
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+            // Add any pending ICE candidates
+            for (const c of pendingCandidates.current) {
+              await pc.addIceCandidate(new RTCIceCandidate(c));
+            }
+            pendingCandidates.current = [];
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            console.log("[Call] Sending answer");
+            channel.send({ type: "broadcast", event: "answer", payload: { answer, from: user?.id } });
+          } catch (err) {
+            console.error("[Call] Error handling offer:", err);
+          }
+        })
+        .on("broadcast", { event: "answer" }, async ({ payload }) => {
+          if (payload.from === user?.id) return;
+          console.log("[Call] Received answer");
+          const pc = peerConnection.current;
+          if (!pc) return;
+          try {
+            if (pc.signalingState === "have-local-offer") {
+              await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+              // Add any pending ICE candidates
+              for (const c of pendingCandidates.current) {
+                await pc.addIceCandidate(new RTCIceCandidate(c));
+              }
+              pendingCandidates.current = [];
+            }
+          } catch (err) {
+            console.error("[Call] Error handling answer:", err);
+          }
+        })
+        .on("broadcast", { event: "ice-candidate" }, async ({ payload }) => {
+          if (payload.from === user?.id) return;
+          const pc = peerConnection.current;
+          if (!pc) return;
+          try {
+            if (pc.remoteDescription) {
+              await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } else {
+              // Queue candidate until remote description is set
+              pendingCandidates.current.push(payload.candidate);
+            }
+          } catch (err) {
+            console.error("[Call] Error adding ICE candidate:", err);
+          }
+        })
+        .subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
+            console.log("[Call] Channel subscribed, isInitiator:", isInitiator);
+            if (isInitiator) {
+              // Small delay to ensure both sides are subscribed
+              setTimeout(async () => {
+                try {
+                  const pc = peerConnection.current;
+                  if (!pc) return;
+                  console.log("[Call] Creating and sending offer...");
+                  const offer = await pc.createOffer();
+                  await pc.setLocalDescription(offer);
+                  channel.send({ type: "broadcast", event: "offer", payload: { offer, from: user?.id } });
+                } catch (err) {
+                  console.error("[Call] Error creating offer:", err);
+                }
+              }, 1000);
+            }
           }
         });
-        
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = localStream.current;
+
+      callChannel.current = channel;
+    },
+    [user?.id]
+  );
+
+  // Create peer connection
+  const createPC = useCallback(
+    (stream: MediaStream) => {
+      if (peerConnection.current) {
+        peerConnection.current.close();
+      }
+
+      const pc = new RTCPeerConnection(iceServers);
+
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+      pc.ontrack = (event) => {
+        console.log("[Call] Remote track received");
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0];
         }
-      }
+      };
 
-      const pc = createPeerConnection(targetUserId, callId);
-
-      if (isInitiator) {
-        console.log("Creating and sending offer...");
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        
-        sendSignal(targetUserId, "offer", {
-          offer,
-          callId,
-          from: user?.id,
-          to: targetUserId,
-        });
-      }
-    } catch (error) {
-      console.error("WebRTC error:", error);
-      toast({
-        variant: "destructive",
-        title: "Camera/Microphone access denied",
-        description: "Please allow camera and microphone access to make video calls.",
-      });
-      endCallCleanup();
-    }
-  }, [user?.id, createPeerConnection, toast, endCallCleanup]);
-
-  // Setup signaling channel
-  useEffect(() => {
-    if (!user) return;
-
-    console.log("Setting up signaling channel for user:", user.id);
-    
-    signalingChannel.current = supabase.channel(`signaling-${user.id}`);
-    
-    signalingChannel.current
-      .on("broadcast", { event: "offer" }, async ({ payload }) => {
-        console.log("Received offer from:", payload.from);
-        if (payload.to !== user.id) return;
-        
-        const pc = peerConnections.current.get(payload.from) || createPeerConnection(payload.from, payload.callId);
-        
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          
-          sendSignal(payload.from, "answer", {
-            answer,
-            callId: payload.callId,
-            from: user.id,
-            to: payload.from,
+      pc.onicecandidate = (event) => {
+        if (event.candidate && callChannel.current) {
+          callChannel.current.send({
+            type: "broadcast",
+            event: "ice-candidate",
+            payload: { candidate: event.candidate, from: user?.id },
           });
-        } catch (err) {
-          console.error("Error handling offer:", err);
         }
-      })
-      .on("broadcast", { event: "answer" }, async ({ payload }) => {
-        console.log("Received answer from:", payload.from);
-        if (payload.to !== user.id) return;
-        
-        const pc = peerConnections.current.get(payload.from);
-        if (pc && pc.signalingState !== "stable") {
-          try {
-            await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
-          } catch (err) {
-            console.error("Error setting remote description:", err);
-          }
-        }
-      })
-      .on("broadcast", { event: "ice-candidate" }, async ({ payload }) => {
-        if (payload.to !== user.id) return;
-        
-        const pc = peerConnections.current.get(payload.from);
-        if (pc) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-          } catch (err) {
-            console.error("Error adding ICE candidate:", err);
-          }
-        }
-      })
-      .subscribe();
+      };
 
-    return () => {
-      if (signalingChannel.current) {
-        supabase.removeChannel(signalingChannel.current);
-      }
-    };
-  }, [user, createPeerConnection]);
+      pc.oniceconnectionstatechange = () => {
+        console.log("[Call] ICE state:", pc.iceConnectionState);
+        if (pc.iceConnectionState === "connected") {
+          console.log("[Call] ✅ Connected!");
+        }
+        if (pc.iceConnectionState === "failed") {
+          console.log("[Call] ❌ ICE failed, restarting...");
+          pc.restartIce();
+        }
+      };
 
-  // Subscribe to call updates
+      pc.onconnectionstatechange = () => {
+        console.log("[Call] Connection state:", pc.connectionState);
+      };
+
+      peerConnection.current = pc;
+      return pc;
+    },
+    [user?.id]
+  );
+
+  // Subscribe to call DB changes (incoming calls + status updates)
   useEffect(() => {
     if (!user) return;
 
-    callsChannel.current = supabase
-      .channel("calls-realtime")
+    const channel = supabase
+      .channel("calls-db-listener")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "calls",
-          filter: `receiver_id=eq.${user.id}`,
-        },
+        { event: "INSERT", schema: "public", table: "calls", filter: `receiver_id=eq.${user.id}` },
         async (payload) => {
           const call = payload.new as Call;
-          
-          if (payload.eventType === "INSERT" && call.status === "ringing") {
+          if (call.status === "ringing") {
             const { data: profile } = await supabase
               .from("profiles")
               .select("display_name, avatar_url")
               .eq("id", call.caller_id)
               .maybeSingle();
-            
-            const callWithProfile = { ...call, caller_profile: profile || undefined };
-            setIncomingCall(callWithProfile);
+            setIncomingCall({ ...call, caller_profile: profile || undefined });
             notifyCall(profile?.display_name || "Someone");
-          } else if (payload.eventType === "UPDATE") {
-            if (call.status === "ended" || call.status === "declined") {
-              endCallCleanup();
-            }
           }
         }
       )
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "calls",
-          filter: `caller_id=eq.${user.id}`,
-        },
+        { event: "UPDATE", schema: "public", table: "calls", filter: `caller_id=eq.${user.id}` },
         async (payload) => {
           const call = payload.new as Call;
-          
-          if (call.status === "accepted" && activeCall?.id === call.id) {
-            console.log("Call accepted, starting WebRTC as caller...");
-            setActiveCall({ ...activeCall, status: "accepted", started_at: call.started_at });
-            await startWebRTC(call.id, call.receiver_id, true);
+          if (call.status === "accepted") {
+            console.log("[Call] Call accepted by receiver, starting WebRTC as caller...");
+            setActiveCall((prev) => (prev?.id === call.id ? { ...prev, status: "accepted", started_at: call.started_at } : prev));
+            try {
+              const stream = await acquireMedia();
+              createPC(stream);
+              joinCallChannel(call.id, call.receiver_id, true);
+            } catch (err) {
+              console.error("[Call] Media error:", err);
+              toast({ variant: "destructive", title: "Camera/Mic access denied" });
+              endCallCleanup();
+            }
           } else if (call.status === "declined" || call.status === "ended") {
-            toast({
-              title: call.status === "declined" ? "Call declined" : "Call ended",
-            });
+            toast({ title: call.status === "declined" ? "Call declined" : "Call ended" });
+            endCallCleanup();
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "calls", filter: `receiver_id=eq.${user.id}` },
+        async (payload) => {
+          const call = payload.new as Call;
+          if (call.status === "ended") {
             endCallCleanup();
           }
         }
@@ -318,204 +278,108 @@ export const useCalling = (user: User | null) => {
       .subscribe();
 
     return () => {
-      if (callsChannel.current) {
-        supabase.removeChannel(callsChannel.current);
-      }
+      supabase.removeChannel(channel);
     };
-  }, [user, activeCall?.id, startWebRTC, endCallCleanup, toast, notifyCall]);
+  }, [user, acquireMedia, createPC, joinCallChannel, endCallCleanup, toast, notifyCall]);
 
-  const initiateCall = useCallback(async (conversationId: string, receiverIds: string | string[]) => {
-    if (!user || isCalling) return;
+  const initiateCall = useCallback(
+    async (conversationId: string, receiverIds: string | string[]) => {
+      if (!user || isCalling) return;
+      const receivers = Array.isArray(receiverIds) ? receiverIds : [receiverIds];
+      if (receivers.length === 0) return;
 
-    const receivers = Array.isArray(receiverIds) ? receiverIds : [receiverIds];
-    if (receivers.length === 0) return;
-
-    setIsCalling(true);
-    try {
-      // For group calls, we'd create multiple call entries or a single group call
-      // For now, supporting the first receiver (can be extended for group)
-      const { data, error } = await supabase
-        .from("calls")
-        .insert({
-          conversation_id: conversationId,
-          caller_id: user.id,
-          receiver_id: receivers[0],
-          status: "ringing",
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setActiveCall(data);
-      toast({ title: "Calling..." });
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to start call",
-        description: error.message,
-      });
-      setIsCalling(false);
-    }
-  }, [user, isCalling, toast]);
+      setIsCalling(true);
+      try {
+        const { data, error } = await supabase
+          .from("calls")
+          .insert({ conversation_id: conversationId, caller_id: user.id, receiver_id: receivers[0], status: "ringing" })
+          .select()
+          .single();
+        if (error) throw error;
+        setActiveCall(data);
+        toast({ title: "Calling..." });
+      } catch (error: any) {
+        toast({ variant: "destructive", title: "Failed to start call", description: error.message });
+        setIsCalling(false);
+      }
+    },
+    [user, isCalling, toast]
+  );
 
   const answerCall = useCallback(async () => {
     if (!incomingCall || !user) return;
-
     try {
-      // Get media first before accepting
-      localStream.current = await navigator.mediaDevices.getUserMedia({ 
-        audio: true,
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user"
-        }
-      });
-      
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = localStream.current;
-      }
+      const stream = await acquireMedia();
+      createPC(stream);
 
       const { error } = await supabase
         .from("calls")
         .update({ status: "accepted", started_at: new Date().toISOString() })
         .eq("id", incomingCall.id);
-
       if (error) throw error;
 
       setActiveCall({ ...incomingCall, status: "accepted" });
       setIncomingCall(null);
-      
-      // Start WebRTC as receiver - wait a bit for caller to be ready
-      setTimeout(() => {
-        startWebRTC(incomingCall.id, incomingCall.caller_id, false);
-      }, 500);
+
+      // Join signaling channel as receiver (not initiator)
+      joinCallChannel(incomingCall.id, incomingCall.caller_id, false);
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to answer call",
-        description: error.message,
-      });
+      toast({ variant: "destructive", title: "Failed to answer call", description: error.message });
       endCallCleanup();
     }
-  }, [incomingCall, user, toast, startWebRTC, endCallCleanup]);
+  }, [incomingCall, user, acquireMedia, createPC, joinCallChannel, toast, endCallCleanup]);
 
   const declineCall = useCallback(async () => {
     if (!incomingCall) return;
-
-    try {
-      await supabase
-        .from("calls")
-        .update({ status: "declined", ended_at: new Date().toISOString() })
-        .eq("id", incomingCall.id);
-
-      setIncomingCall(null);
-    } catch (error: any) {
-      console.error("Failed to decline call:", error);
-    }
+    await supabase.from("calls").update({ status: "declined", ended_at: new Date().toISOString() }).eq("id", incomingCall.id);
+    setIncomingCall(null);
   }, [incomingCall]);
 
   const endCall = useCallback(async () => {
     if (!activeCall) return;
-
-    try {
-      await supabase
-        .from("calls")
-        .update({ status: "ended", ended_at: new Date().toISOString() })
-        .eq("id", activeCall.id);
-
-      endCallCleanup();
-    } catch (error: any) {
-      console.error("Failed to end call:", error);
-      endCallCleanup();
-    }
+    await supabase.from("calls").update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", activeCall.id);
+    endCallCleanup();
   }, [activeCall, endCallCleanup]);
 
   const toggleVideo = useCallback(() => {
-    if (localStream.current) {
-      const videoTrack = localStream.current.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        return videoTrack.enabled;
-      }
-    }
+    const track = localStream.current?.getVideoTracks()[0];
+    if (track) { track.enabled = !track.enabled; return track.enabled; }
     return false;
   }, []);
 
   const toggleAudio = useCallback(() => {
-    if (localStream.current) {
-      const audioTrack = localStream.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        return audioTrack.enabled;
-      }
-    }
+    const track = localStream.current?.getAudioTracks()[0];
+    if (track) { track.enabled = !track.enabled; return track.enabled; }
     return false;
   }, []);
 
   const toggleScreenShare = useCallback(async () => {
     if (!activeCall) return false;
-
     try {
       if (isScreenSharing) {
-        // Stop screen sharing
-        screenStream.current?.getTracks().forEach((track) => track.stop());
+        screenStream.current?.getTracks().forEach((t) => t.stop());
         screenStream.current = null;
-        
-        // Replace screen track with camera track
         const videoTrack = localStream.current?.getVideoTracks()[0];
         if (videoTrack) {
-          peerConnections.current.forEach((pc) => {
-            const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-            if (sender) {
-              sender.replaceTrack(videoTrack);
-            }
-          });
+          const sender = peerConnection.current?.getSenders().find((s) => s.track?.kind === "video");
+          sender?.replaceTrack(videoTrack);
         }
-        
-        if (localVideoRef.current && localStream.current) {
-          localVideoRef.current.srcObject = localStream.current;
-        }
-        
+        if (localVideoRef.current && localStream.current) localVideoRef.current.srcObject = localStream.current;
         setIsScreenSharing(false);
         return false;
       } else {
-        // Start screen sharing
-        screenStream.current = await navigator.mediaDevices.getDisplayMedia({
-          video: { cursor: "always" } as any,
-          audio: false,
-        });
-
+        screenStream.current = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
         const screenTrack = screenStream.current.getVideoTracks()[0];
-        
-        // Replace camera track with screen track
-        peerConnections.current.forEach((pc) => {
-          const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-          if (sender) {
-            sender.replaceTrack(screenTrack);
-          }
-        });
-
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = screenStream.current;
-        }
-
-        // Handle user stopping screen share via browser UI
-        screenTrack.onended = () => {
-          toggleScreenShare();
-        };
-
+        const sender = peerConnection.current?.getSenders().find((s) => s.track?.kind === "video");
+        sender?.replaceTrack(screenTrack);
+        if (localVideoRef.current) localVideoRef.current.srcObject = screenStream.current;
+        screenTrack.onended = () => { toggleScreenShare(); };
         setIsScreenSharing(true);
         return true;
       }
     } catch (error) {
-      console.error("Screen share error:", error);
-      toast({
-        variant: "destructive",
-        title: "Screen sharing failed",
-        description: "Could not start screen sharing.",
-      });
+      console.error("[Call] Screen share error:", error);
+      toast({ variant: "destructive", title: "Screen sharing failed" });
       return isScreenSharing;
     }
   }, [activeCall, isScreenSharing, toast]);
@@ -525,7 +389,6 @@ export const useCalling = (user: User | null) => {
     incomingCall,
     isCalling,
     isScreenSharing,
-    participants,
     initiateCall,
     answerCall,
     declineCall,
