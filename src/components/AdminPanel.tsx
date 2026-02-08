@@ -60,6 +60,7 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
   const handleDisco = () => sendEffect("disco");
   const handleFunny = () => sendEffect("funny");
   const handleShake = () => sendEffect("shake");
+  const handleKaiCenat = () => sendEffect("kai-cenat");
   const handleBroadcast = () => {
     if (!broadcastText.trim()) return;
     sendEffect("text", { text: broadcastText.trim() });
@@ -151,6 +152,11 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
                   <Button onClick={handleShake} disabled={!channelReady} variant="outline" className="w-full font-bold" size="sm">
                     <Vibrate className="w-4 h-4 mr-2" />
                     Screen Shake (3s)
+                  </Button>
+
+                  <Button onClick={handleKaiCenat} disabled={!channelReady} variant="outline" className="w-full font-bold border-yellow-500 text-yellow-600 hover:bg-yellow-50" size="sm">
+                    <Laugh className="w-4 h-4 mr-2" />
+                    Kai Cenat Troll (5s)
                   </Button>
 
                   <div className="relative">
