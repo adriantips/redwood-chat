@@ -7,6 +7,7 @@ const EffectsOverlay = () => {
   const [shakeActive, setShakeActive] = useState(false);
   const [broadcastText, setBroadcastText] = useState<string | null>(null);
   const [broadcastGif, setBroadcastGif] = useState<string | null>(null);
+  const [kaiCenatActive, setKaiCenatActive] = useState(false);
   const [emojis, setEmojis] = useState<{ id: number; x: number; y: number; emoji: string }[]>([]);
 
   const triggerDisco = useCallback(() => {
@@ -50,6 +51,11 @@ const EffectsOverlay = () => {
     setTimeout(() => setBroadcastGif(null), 8000);
   }, []);
 
+  const triggerKaiCenat = useCallback(() => {
+    setKaiCenatActive(true);
+    setTimeout(() => setKaiCenatActive(false), 5000);
+  }, []);
+
   useEffect(() => {
     const channel = subscribeEffectsChannel();
 
@@ -72,6 +78,9 @@ const EffectsOverlay = () => {
           case "gif":
             if (payload.url) triggerGif(payload.url as string);
             break;
+          case "kai-cenat":
+            triggerKaiCenat();
+            break;
         }
       })
       .subscribe((status) => {
@@ -81,7 +90,7 @@ const EffectsOverlay = () => {
     return () => {
       unsubscribeEffectsChannel();
     };
-  }, [triggerDisco, triggerFunny, triggerText, triggerShake, triggerGif]);
+  }, [triggerDisco, triggerFunny, triggerText, triggerShake, triggerGif, triggerKaiCenat]);
 
   return (
     <>
@@ -126,6 +135,17 @@ const EffectsOverlay = () => {
             <p className="text-xs font-bold text-center mb-2 text-primary">🔥 Admin GIF</p>
             <img src={broadcastGif} alt="Broadcast GIF" className="rounded-lg max-h-[300px] w-auto mx-auto" />
           </div>
+        </div>
+      )}
+
+      {kaiCenatActive && (
+        <div className="fixed inset-0 z-[9993] flex items-start justify-center pointer-events-none animate-fade-in pt-4">
+          <img
+            src="/images/kai-cenat-troll.gif"
+            alt="Kai Cenat Troll"
+            className="rounded-2xl shadow-2xl border-4 border-yellow-400"
+            style={{ maxHeight: "70vh", maxWidth: "90vw", width: "auto" }}
+          />
         </div>
       )}
 
