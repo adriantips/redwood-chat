@@ -12,9 +12,11 @@ import {
   Users,
   Zap,
   SmilePlus,
+  Volume2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getEffectsChannel, subscribeEffectsChannel, unsubscribeEffectsChannel } from "@/lib/effectsChannel";
+import { supabase } from "@/integrations/supabase/client";
 import AdminUserManager from "./AdminUserManager";
 import GifPicker from "./GifPicker";
 
@@ -28,7 +30,9 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
   const [position, setPosition] = useState({ x: 60, y: 60 });
   const [dragging, setDragging] = useState(false);
   const [channelReady, setChannelReady] = useState(false);
+  const [uploadingSound, setUploadingSound] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const soundInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -65,6 +69,24 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
     if (!broadcastText.trim()) return;
     sendEffect("text", { text: broadcastText.trim() });
     setBroadcastText("");
+  };
+
+  const handleSoundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingSound(true);
+    try {
+      const fileName = `troll-sounds/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("chat-media").upload(fileName, file);
+      if (error) throw error;
+      const { data: urlData } = supabase.storage.from("chat-media").getPublicUrl(fileName);
+      await sendEffect("sound", { url: urlData.publicUrl });
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Upload failed", description: err.message });
+    } finally {
+      setUploadingSound(false);
+      if (soundInputRef.current) soundInputRef.current.value = "";
+    }
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
@@ -158,6 +180,26 @@ const AdminPanel = ({ onClose }: { onClose: () => void }) => {
                     <Laugh className="w-4 h-4 mr-2" />
                     Kai Cenat Troll (5s)
                   </Button>
+
+                  <div>
+                    <input
+                      ref={soundInputRef}
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={handleSoundUpload}
+                    />
+                    <Button
+                      onClick={() => soundInputRef.current?.click()}
+                      disabled={!channelReady || uploadingSound}
+                      variant="outline"
+                      className="w-full font-bold"
+                      size="sm"
+                    >
+                      <Volume2 className="w-4 h-4 mr-2" />
+                      {uploadingSound ? "Uploading..." : "Sound Troll 🔊"}
+                    </Button>
+                  </div>
 
                   <div className="relative">
                     <Button

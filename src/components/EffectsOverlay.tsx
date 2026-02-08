@@ -56,6 +56,16 @@ const EffectsOverlay = () => {
     setTimeout(() => setKaiCenatActive(false), 5000);
   }, []);
 
+  const triggerSound = useCallback((url: string) => {
+    try {
+      const audio = new Audio(url);
+      audio.volume = 1;
+      audio.play().catch((err) => console.warn("[Effects] Audio play blocked:", err));
+    } catch (err) {
+      console.warn("[Effects] Audio error:", err);
+    }
+  }, []);
+
   useEffect(() => {
     const channel = subscribeEffectsChannel();
 
@@ -81,6 +91,9 @@ const EffectsOverlay = () => {
           case "kai-cenat":
             triggerKaiCenat();
             break;
+          case "sound":
+            if (payload.url) triggerSound(payload.url as string);
+            break;
         }
       })
       .subscribe((status) => {
@@ -90,7 +103,7 @@ const EffectsOverlay = () => {
     return () => {
       unsubscribeEffectsChannel();
     };
-  }, [triggerDisco, triggerFunny, triggerText, triggerShake, triggerGif, triggerKaiCenat]);
+  }, [triggerDisco, triggerFunny, triggerText, triggerShake, triggerGif, triggerKaiCenat, triggerSound]);
 
   return (
     <>
